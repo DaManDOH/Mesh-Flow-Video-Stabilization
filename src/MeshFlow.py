@@ -1,7 +1,5 @@
 import cv2
 import numpy as np
-from tqdm import tqdm
-from time import time
 from scipy.signal import medfilt
 
 # block of size in mesh
@@ -40,7 +38,7 @@ def motion_propagate(old_points, new_points, old_frame):
     """
     # spreads motion over the mesh for the old_frame
     x_motion = {}; y_motion = {};
-    cols, rows = old_frame.shape[1]/PIXELS, old_frame.shape[0]/PIXELS
+    cols, rows = old_frame.shape[1] // PIXELS, old_frame.shape[0] // PIXELS
     
     # pre-warping with global homography
     H, _ = cv2.findHomography(old_points, new_points, cv2.RANSAC)
@@ -59,7 +57,7 @@ def motion_propagate(old_points, new_points, old_frame):
             for pt, st in zip(old_points, new_points):
                                 
                 # velocity = point - feature point in current frame
-                dst = np.sqrt((vertex[0]-pt[0])**2+(vertex[1]-pt[1])**2)
+                dst = np.sqrt((vertex[0]-pt[0])**2 + (vertex[1]-pt[1])**2)
                 if dst < RADIUS:
                     ptrans = point_transform(H, pt)
                     try:
@@ -77,12 +75,12 @@ def motion_propagate(old_points, new_points, old_frame):
     for key in x_motion.keys():
         try:
             temp_x_motion[key].sort()
-            x_motion_mesh[key] = x_motion[key]+temp_x_motion[key][len(temp_x_motion[key])/2]
+            x_motion_mesh[key] = x_motion[key]+temp_x_motion[key][len(temp_x_motion[key]) // 2]
         except KeyError:
             x_motion_mesh[key] = x_motion[key]
         try:
             temp_y_motion[key].sort()
-            y_motion_mesh[key] = y_motion[key]+temp_y_motion[key][len(temp_y_motion[key])/2]
+            y_motion_mesh[key] = y_motion[key]+temp_y_motion[key][len(temp_y_motion[key]) // 2]
         except KeyError:
             y_motion_mesh[key] = y_motion[key]
     

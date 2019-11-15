@@ -8,12 +8,15 @@ from Optimization import real_time_optimize_path
 from MeshFlow import motion_propagate
 from MeshFlow import mesh_warp_frame
 from MeshFlow import generate_vertex_profiles
+from os import path
+
 
 # block of size in mesh
 PIXELS = 16
 
 # motion propogation radius
 RADIUS = 300
+
 
 def measure_performance(method):
     def timed(*args, **kwargs):
@@ -23,6 +26,7 @@ def measure_performance(method):
         print(method.__name__+' has taken: '+str(end_time-start_time)+' sec')
         return result
     return timed
+
 
 @measure_performance
 def read_video(cap):
@@ -57,14 +61,14 @@ def read_video(cap):
     HORIZONTAL_BORDER = 30
 
     global VERTICAL_BORDER
-    VERTICAL_BORDER = (HORIZONTAL_BORDER*old_gray.shape[1])/old_gray.shape[0]
+    VERTICAL_BORDER = (HORIZONTAL_BORDER*old_gray.shape[1]) // old_gray.shape[0]
 
     # motion meshes in x-direction and y-direction
     x_motion_meshes = []; y_motion_meshes = []
 
     # path parameters
-    x_paths = np.zeros((old_frame.shape[0]/PIXELS, old_frame.shape[1]/PIXELS, 1))
-    y_paths = np.zeros((old_frame.shape[0]/PIXELS, old_frame.shape[1]/PIXELS, 1))
+    x_paths = np.zeros((old_frame.shape[0] // PIXELS, old_frame.shape[1] // PIXELS, 1))
+    y_paths = np.zeros((old_frame.shape[0] // PIXELS, old_frame.shape[1] // PIXELS, 1))
 
     frame_num = 1
     bar = tqdm(total=frame_count)
@@ -85,7 +89,9 @@ def read_video(cap):
         good_old = p0[st==1]
 
         # estimate motion mesh for old_frame
-        x_motion_mesh, y_motion_mesh = motion_propagate(good_old, good_new, frame)
+        good_old_int = np.round(good_old).astype(int)
+        good_new_int = np.round(good_new).astype(int)
+        x_motion_mesh, y_motion_mesh = motion_propagate(good_old_int, good_new_int, frame)
         try:
             x_motion_meshes = np.concatenate((x_motion_meshes, np.expand_dims(x_motion_mesh, axis=2)), axis=2)
             y_motion_meshes = np.concatenate((y_motion_meshes, np.expand_dims(y_motion_mesh, axis=2)), axis=2)
@@ -195,7 +201,7 @@ def generate_stabilized_video(cap, x_motion_meshes, y_motion_meshes, new_x_motio
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     # generate stabilized video
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    fourcc = cv2.VideoWriter.fourcc(*'XVID')
     out = cv2.VideoWriter('../stable.avi', fourcc, frame_rate, (2*frame_width, frame_height))
 
     frame_num = 0
@@ -223,14 +229,14 @@ def generate_stabilized_video(cap, x_motion_meshes, y_motion_meshes, new_x_motio
                     theta = np.arctan2(y_motion_mesh[i, j], x_motion_mesh[i, j])
                     cv2.line(frame, (j*PIXELS, i*PIXELS), (int(j*PIXELS+r*np.cos(theta)), int(i*PIXELS+r*np.sin(theta))), 1)
             cv2.imwrite('../results/old_motion_vectors/'+str(frame_num)+'.jpg', frame)
-
+    
             # draw new motion vectors
             for i in range(new_x_motion_mesh.shape[0]):
                 for j in range(new_x_motion_mesh.shape[1]):
                     theta = np.arctan2(new_y_motion_mesh[i, j], new_x_motion_mesh[i, j])
                     cv2.line(new_frame, (j*PIXELS, i*PIXELS), (int(j*PIXELS+r*np.cos(theta)), int(i*PIXELS+r*np.sin(theta))), 1)
             cv2.imwrite('../results/new_motion_vectors/'+str(frame_num)+'.jpg', new_frame)
-
+    
             frame_num += 1
             bar.update(1)
         except:
@@ -246,20 +252,24 @@ if __name__ == '__main__':
     start_time = time.time()
     # get video properties
     file_name = sys.argv[1]
-    cap = cv2.VideoCapture(file_name)
-    
-    # propogate motion vectors and generate vertex profiles
-    x_motion_meshes, y_motion_meshes, x_paths, y_paths = read_video(cap)
-    
-    # stabilize the vertex profiles
-    sx_paths, sy_paths = stabilize(x_paths, y_paths)
-    
-    # visualize optimized paths
-    plot_vertex_profiles(x_paths, sx_paths)
+    if path.exists(file_name) and path.isfile(file_name):
+        cap = cv2.VideoCapture(file_name)
+        
+        # propogate motion vectors and generate vertex profiles
+        x_motion_meshes, y_motion_meshes, x_paths, y_paths = read_video(cap)
+        
+        # stabilize the vertex profiles
+        sx_paths, sy_paths = stabilize(x_paths, y_paths)
+        
+        # visualize optimized paths
+        plot_vertex_profiles(x_paths, sx_paths)
+        
+        # get updated mesh warps
+        x_motion_meshes, y_motion_meshes, new_x_motion_meshes, new_y_motion_meshes = get_frame_warp(x_motion_meshes, y_motion_meshes, x_paths, y_paths, sx_paths, sy_paths)
 
-    # get updated mesh warps
-    x_motion_meshes, y_motion_meshes, new_x_motion_meshes, new_y_motion_meshes = get_frame_warp(x_motion_meshes, y_motion_meshes, x_paths, y_paths, sx_paths, sy_paths)
-
-    # apply updated mesh warps & save the result
-    generate_stabilized_video(cap, x_motion_meshes, y_motion_meshes, new_x_motion_meshes, new_y_motion_meshes)
-    print('Time elapsed: ', str(time.time()-start_time))
+        # apply updated mesh warps & save the result
+        generate_stabilized_video(cap, x_motion_meshes, y_motion_meshes, new_x_motion_meshes, new_y_motion_meshes)
+        print('Time elapsed: ', str(time.time()-start_time))
+    else:
+        sys.stderr.write('Input file does not exist\n')
+        
